@@ -13,14 +13,18 @@ import com.mate.meeting_room_reservation.repository.RoomRepository;
 import com.mate.meeting_room_reservation.security.CurrentUserService;
 import com.mate.meeting_room_reservation.service.ReservationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class ReservationServiceImpl implements ReservationService {
+
+    private static final Sort BY_START_TIME = Sort.by("startTime");
 
     private final ReservationRepository reservationRepository;
     private final EmployeeRepository employeeRepository;
@@ -30,7 +34,7 @@ public class ReservationServiceImpl implements ReservationService {
 
     @Override
     public List<ReservationDTO> listAllReservations() {
-        return reservationRepository.findAll()
+        return reservationRepository.findAll(BY_START_TIME)
                 .stream()
                 .map(reservationMapper::toDto)
                 .toList();
@@ -38,7 +42,7 @@ public class ReservationServiceImpl implements ReservationService {
 
     @Override
     public List<ReservationDTO> listActiveReservations() {
-        return reservationRepository.findByArchivedFalse()
+        return reservationRepository.findByArchivedFalse(BY_START_TIME)
                 .stream()
                 .map(reservationMapper::toDto)
                 .toList();
@@ -54,6 +58,7 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     public ReservationDTO createReservation(SaveReservationDTO dto) {
         validateTimeRange(dto.startTime(), dto.endTime());
+        validateNotInPast(dto.startTime());
 
         Employee employee = resolveReservationOwner(dto.employeeId());
 
@@ -94,7 +99,16 @@ public class ReservationServiceImpl implements ReservationService {
             throw new BadRequestException("Archived reservation cannot be modified.");
         }
 
+        if (reservation.getStatus().isFinal()) {
+            throw new BadRequestException("Cancelled or completed reservation cannot be modified.");
+        }
+
         validateTimeRange(dto.startTime(), dto.endTime());
+
+        // Moving a reservation into the past is not allowed, but an ongoing one can still be edited
+        if (!dto.startTime().equals(reservation.getStartTime())) {
+            validateNotInPast(dto.startTime());
+        }
 
         Employee employee = resolveReservationOwner(dto.employeeId());
 
@@ -136,7 +150,43 @@ public class ReservationServiceImpl implements ReservationService {
             throw new BadRequestException("Invalid reservation status.");
         }
 
+        if (!reservation.getStatus().canTransitionTo(newStatus)) {
+            throw new BadRequestException(
+                    "Status cannot be changed from " + reservation.getStatus() + " to " + newStatus + ".");
+        }
+
         reservation.setStatus(newStatus);
+
+        Reservation savedReservation = reservationRepository.save(reservation);
+        return reservationMapper.toDto(savedReservation);
+    }
+
+    @Override
+    public ReservationDTO restoreReservation(Long id) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found."));
+
+        if (!Boolean.TRUE.equals(reservation.getArchived())) {
+            throw new BadRequestException("Reservation is not archived.");
+        }
+
+        // A restored reservation that occupies a slot must still be valid, since others may have booked it meanwhile
+        if (ReservationStatus.BLOCKING.contains(reservation.getStatus())) {
+            if (!Boolean.TRUE.equals(reservation.getRoom().getActive())) {
+                throw new BadRequestException("Room is not active.");
+            }
+            if (!Boolean.TRUE.equals(reservation.getEmployee().getActive())) {
+                throw new BadRequestException("Employee is not active.");
+            }
+            validateNoOverlapForUpdate(
+                    reservation.getRoom().getId(),
+                    reservation.getStartTime(),
+                    reservation.getEndTime(),
+                    reservation.getId()
+            );
+        }
+
+        reservation.setArchived(false);
 
         Reservation savedReservation = reservationRepository.save(reservation);
         return reservationMapper.toDto(savedReservation);
@@ -159,7 +209,7 @@ public class ReservationServiceImpl implements ReservationService {
             throw new ResourceNotFoundException("Room not found.");
         }
 
-        return reservationRepository.findByRoomIdAndArchivedFalse(roomId)
+        return reservationRepository.findByRoomIdAndArchivedFalse(roomId, BY_START_TIME)
                 .stream()
                 .map(reservationMapper::toDto)
                 .toList();
@@ -171,7 +221,7 @@ public class ReservationServiceImpl implements ReservationService {
             throw new ResourceNotFoundException("Employee not found.");
         }
 
-        return reservationRepository.findByEmployeeIdAndArchivedFalse(employeeId)
+        return reservationRepository.findByEmployeeIdAndArchivedFalse(employeeId, BY_START_TIME)
                 .stream()
                 .map(reservationMapper::toDto)
                 .toList();
@@ -180,6 +230,12 @@ public class ReservationServiceImpl implements ReservationService {
     private void validateTimeRange(java.time.LocalDateTime start, java.time.LocalDateTime end) {
         if (!start.isBefore(end)) {
             throw new BadRequestException("Start time must be before end time.");
+        }
+    }
+
+    private void validateNotInPast(LocalDateTime start) {
+        if (start.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Reservation cannot start in the past.");
         }
     }
 

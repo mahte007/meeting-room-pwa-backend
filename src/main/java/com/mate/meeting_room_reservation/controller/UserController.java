@@ -1,6 +1,8 @@
 package com.mate.meeting_room_reservation.controller;
 
 import com.mate.meeting_room_reservation.dto.user.CreateUserDTO;
+import com.mate.meeting_room_reservation.dto.user.ResetPasswordDTO;
+import com.mate.meeting_room_reservation.dto.user.UpdateUserDTO;
 import com.mate.meeting_room_reservation.dto.user.UserDTO;
 import com.mate.meeting_room_reservation.service.UserService;
 import jakarta.validation.Valid;
@@ -24,6 +26,16 @@ public class UserController {
     @PostMapping
     public UserDTO createUser(@Valid @RequestBody CreateUserDTO dto) {
         return userService.createUser(dto);
+    }
+
+    @PutMapping("/{id}")
+    public UserDTO updateUser(@PathVariable Long id, @Valid @RequestBody UpdateUserDTO dto) {
+        return userService.updateUser(id, dto);
+    }
+
+    @PatchMapping("/{id}/password")
+    public void resetPassword(@PathVariable Long id, @Valid @RequestBody ResetPasswordDTO dto) {
+        userService.resetPassword(id, dto);
     }
 
     @DeleteMapping("/{id}")

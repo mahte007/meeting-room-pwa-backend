@@ -48,6 +48,11 @@ public class RoomController {
         roomService.deleteRoom(id);
     }
 
+    @PatchMapping("/{id}/activate")
+    public RoomDTO activateRoom(@PathVariable Long id) {
+        return roomService.activateRoom(id);
+    }
+
     @GetMapping("/available")
     public List<RoomDTO> listAvailableRooms(
             @RequestParam

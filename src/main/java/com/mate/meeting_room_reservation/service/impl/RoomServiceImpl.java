@@ -12,6 +12,7 @@ import com.mate.meeting_room_reservation.repository.ReservationRepository;
 import com.mate.meeting_room_reservation.repository.RoomRepository;
 import com.mate.meeting_room_reservation.service.RoomService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -21,13 +22,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RoomServiceImpl implements RoomService {
 
+    private static final Sort BY_NAME = Sort.by("name");
+
     private final RoomRepository roomRepository;
     private final ReservationRepository reservationRepository;
     private final RoomMapper roomMapper;
 
     @Override
     public List<RoomDTO> listAllRooms() {
-        return roomRepository.findAll()
+        return roomRepository.findAll(BY_NAME)
                 .stream()
                 .map(roomMapper::toDto)
                 .toList();
@@ -35,7 +38,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public List<RoomDTO> listActiveRooms() {
-        return roomRepository.findByActiveTrue()
+        return roomRepository.findByActiveTrue(BY_NAME)
                 .stream()
                 .map(roomMapper::toDto)
                 .toList();
@@ -50,6 +53,10 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public RoomDTO createRoom(SaveRoomDTO dto) {
+        if (roomRepository.existsByNameIgnoreCase(dto.name())) {
+            throw new BadRequestException("Room name already exists.");
+        }
+
         Room room = roomMapper.toEntity(dto);
         room.setId(null);
         room.setActive(true);
@@ -63,6 +70,10 @@ public class RoomServiceImpl implements RoomService {
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found."));
 
+        if (roomRepository.existsByNameIgnoreCaseAndIdNot(dto.name(), id)) {
+            throw new BadRequestException("Room name already exists.");
+        }
+
         roomMapper.updateEntityFromDto(dto, room);
 
         Room savedRoom = roomRepository.save(room);
@@ -74,12 +85,24 @@ public class RoomServiceImpl implements RoomService {
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found."));
 
-        if (reservationRepository.existsByRoomIdAndArchivedFalse(id)) {
-            throw new BadRequestException("Room cannot be deactivated because it has active reservations.");
+        if (reservationRepository.existsByRoomIdAndArchivedFalseAndStatusInAndEndTimeAfter(
+                id, ReservationStatus.BLOCKING, LocalDateTime.now())) {
+            throw new BadRequestException("Room cannot be deactivated because it has upcoming reservations.");
         }
 
         room.setActive(false);
         roomRepository.save(room);
+    }
+
+    @Override
+    public RoomDTO activateRoom(Long id) {
+        Room room = roomRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found."));
+
+        room.setActive(true);
+
+        Room savedRoom = roomRepository.save(room);
+        return roomMapper.toDto(savedRoom);
     }
 
     @Override
@@ -92,7 +115,7 @@ public class RoomServiceImpl implements RoomService {
             throw new BadRequestException("Start time must be before end time.");
         }
 
-        List<Room> activeRooms = roomRepository.findByActiveTrue();
+        List<Room> activeRooms = roomRepository.findByActiveTrue(BY_NAME);
 
         return activeRooms.stream()
                 .filter(room -> {
