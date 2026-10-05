@@ -52,6 +52,11 @@ public class ReservationController {
         reservationService.deleteReservation(id);
     }
 
+    @PatchMapping("/{id}/restore")
+    public ReservationDTO restoreReservation(@PathVariable Long id) {
+        return reservationService.restoreReservation(id);
+    }
+
     @GetMapping("/room/{roomId}")
     public List<ReservationDTO> listReservationsByRoom(@PathVariable Long roomId) {
         return reservationService.listReservationsByRoom(roomId);

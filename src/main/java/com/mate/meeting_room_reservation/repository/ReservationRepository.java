@@ -2,22 +2,33 @@ package com.mate.meeting_room_reservation.repository;
 
 import com.mate.meeting_room_reservation.entity.Reservation;
 import com.mate.meeting_room_reservation.entity.ReservationStatus;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 public interface ReservationRepository extends JpaRepository<Reservation, Long> {
 
-    List<Reservation> findByArchivedFalse();
+    List<Reservation> findByArchivedFalse(Sort sort);
 
-    List<Reservation> findByRoomIdAndArchivedFalse(Long roomId);
+    List<Reservation> findByRoomIdAndArchivedFalse(Long roomId, Sort sort);
 
-    List<Reservation> findByEmployeeIdAndArchivedFalse(Long employeeId);
+    List<Reservation> findByEmployeeIdAndArchivedFalse(Long employeeId, Sort sort);
 
-    boolean existsByEmployeeIdAndArchivedFalse(Long employeeId);
+    // Upcoming or ongoing reservations that still occupy a slot
+    boolean existsByEmployeeIdAndArchivedFalseAndStatusInAndEndTimeAfter(
+            Long employeeId,
+            Collection<ReservationStatus> statuses,
+            LocalDateTime now
+    );
 
-    boolean existsByRoomIdAndArchivedFalse(Long roomId);
+    boolean existsByRoomIdAndArchivedFalseAndStatusInAndEndTimeAfter(
+            Long roomId,
+            Collection<ReservationStatus> statuses,
+            LocalDateTime now
+    );
 
     List<Reservation> findByRoomIdAndArchivedFalseAndStatusNotAndStartTimeLessThanAndEndTimeGreaterThan(
             Long roomId,

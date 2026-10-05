@@ -45,4 +45,9 @@ public class EmployeeController {
     public void deleteEmployee(@PathVariable Long id) {
         employeeService.deleteEmployee(id);
     }
+
+    @PatchMapping("/{id}/activate")
+    public EmployeeDTO activateEmployee(@PathVariable Long id) {
+        return employeeService.activateEmployee(id);
+    }
 }

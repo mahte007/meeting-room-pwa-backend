@@ -20,5 +20,7 @@ public interface RoomService {
 
     void deleteRoom(Long id);
 
+    RoomDTO activateRoom(Long id);
+
     List<RoomDTO> listAvailableRooms(LocalDateTime start, LocalDateTime end);
 }

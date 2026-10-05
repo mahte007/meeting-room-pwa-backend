@@ -1,11 +1,11 @@
 package com.mate.meeting_room_reservation.config;
 
 import com.mate.meeting_room_reservation.security.JwtAuthenticationFilter;
+import com.mate.meeting_room_reservation.security.SecurityErrorHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -18,7 +18,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -27,6 +26,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final SecurityErrorHandler securityErrorHandler;
     private final UserDetailsService userDetailsService;
 
     @Bean
@@ -37,14 +37,15 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                // Missing or invalid token -> 401 (the default would be 403)
+                // Missing or invalid token -> 401, insufficient role -> 403, both as JSON
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler)
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/auth/**",
-                                // Spring forwards 403s here; the JWT filter doesn't rerun on that forward, so it must be public or a 403 turns into a 401
+                                // Spring forwards errors here; the JWT filter doesn't rerun on that forward, so it must be public or the error turns into a 401
                                 "/error",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
@@ -61,6 +62,7 @@ public class SecurityConfig {
 
                         // User accounts
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/me/**", "/api/me").authenticated()
 
                         // Reservations
                         .requestMatchers(HttpMethod.GET, "/api/reservations/**").hasAnyRole("ADMIN", "EMPLOYEE")
