@@ -12,6 +12,6 @@ public record SaveReservationDTO(
         @NotNull LocalDateTime startTime,
         @NotNull LocalDateTime endTime,
         @NotNull @Min(1) Integer attendeeCount,
-        @NotNull Long employeeId,
+        Long employeeId, // only used when an admin books on behalf of an employee
         @NotNull Long roomId
         ) {}

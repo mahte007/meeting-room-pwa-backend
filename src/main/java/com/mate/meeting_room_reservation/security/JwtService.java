@@ -2,6 +2,7 @@ package com.mate.meeting_room_reservation.security;
 
 import com.mate.meeting_room_reservation.entity.AppUser;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Service;
@@ -38,10 +39,6 @@ public class JwtService {
         return extractAllClaims(token).getSubject();
     }
 
-    public String extractRole(String token) {
-        return extractAllClaims(token).get("role", String.class);
-    }
-
     public Long extractEmployeeId(String token) {
         Object employeeId = extractAllClaims(token).get("employeeId");
 
@@ -61,9 +58,13 @@ public class JwtService {
     }
 
     public boolean isTokenValid(String token) {
-        return extractAllClaims(token)
-                .getExpiration()
-                .after(new Date());
+        // The parser verifies the signature and expiration and throws if either check fails
+        try {
+            extractAllClaims(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private Claims extractAllClaims(String token) {
