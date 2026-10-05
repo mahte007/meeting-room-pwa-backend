@@ -7,12 +7,13 @@ import com.mate.meeting_room_reservation.entity.*;
 import com.mate.meeting_room_reservation.exception.BadRequestException;
 import com.mate.meeting_room_reservation.exception.ResourceNotFoundException;
 import com.mate.meeting_room_reservation.mapper.ReservationMapper;
-import com.mate.meeting_room_reservation.repository.AppUserRepository;
 import com.mate.meeting_room_reservation.repository.EmployeeRepository;
 import com.mate.meeting_room_reservation.repository.ReservationRepository;
 import com.mate.meeting_room_reservation.repository.RoomRepository;
+import com.mate.meeting_room_reservation.security.CurrentUserService;
 import com.mate.meeting_room_reservation.service.ReservationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -25,7 +26,7 @@ public class ReservationServiceImpl implements ReservationService {
     private final EmployeeRepository employeeRepository;
     private final RoomRepository roomRepository;
     private final ReservationMapper reservationMapper;
-    private final AppUserRepository appUserRepository;
+    private final CurrentUserService currentUserService;
 
     @Override
     public List<ReservationDTO> listAllReservations() {
@@ -54,12 +55,7 @@ public class ReservationServiceImpl implements ReservationService {
     public ReservationDTO createReservation(SaveReservationDTO dto) {
         validateTimeRange(dto.startTime(), dto.endTime());
 
-        Employee employee = employeeRepository.findById(dto.employeeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
-
-        if (!Boolean.TRUE.equals(employee.getActive())) {
-            throw new BadRequestException("Employee is not active.");
-        }
+        Employee employee = resolveReservationOwner(dto.employeeId());
 
         Room room = roomRepository.findById(dto.roomId())
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found."));
@@ -100,12 +96,7 @@ public class ReservationServiceImpl implements ReservationService {
 
         validateTimeRange(dto.startTime(), dto.endTime());
 
-        Employee employee = employeeRepository.findById(dto.employeeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
-
-        if (!Boolean.TRUE.equals(employee.getActive())) {
-            throw new BadRequestException("Employee is not active.");
-        }
+        Employee employee = resolveReservationOwner(dto.employeeId());
 
         Room room = roomRepository.findById(dto.roomId())
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found."));
@@ -229,25 +220,44 @@ public class ReservationServiceImpl implements ReservationService {
         }
     }
 
+    // Admins may book for any employee; everyone else always books for themselves
+    private Employee resolveReservationOwner(Long requestedEmployeeId) {
+        AppUser currentUser = currentUserService.getCurrentUser();
+
+        Employee employee;
+        if (currentUserService.isAdmin(currentUser)) {
+            if (requestedEmployeeId == null) {
+                throw new BadRequestException("Employee is required.");
+            }
+            employee = employeeRepository.findById(requestedEmployeeId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
+        } else {
+            employee = getLinkedEmployee(currentUser);
+        }
+
+        if (!Boolean.TRUE.equals(employee.getActive())) {
+            throw new BadRequestException("Employee is not active.");
+        }
+
+        return employee;
+    }
+
     private void validateReservationOwnershipForEmployee(Reservation reservation) {
-        String username = org.springframework.security.core.context.SecurityContextHolder
-                .getContext()
-                .getAuthentication()
-                .getName();
+        AppUser currentUser = currentUserService.getCurrentUser();
 
-        AppUser currentUser = appUserRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found."));
-
-        if (currentUser.getRole() == UserRole.ADMIN) {
+        if (currentUserService.isAdmin(currentUser)) {
             return;
         }
 
-        if (currentUser.getEmployee() == null) {
-            throw new BadRequestException("Authenticated user is not linked to an employee.");
+        if (!reservation.getEmployee().getId().equals(getLinkedEmployee(currentUser).getId())) {
+            throw new AccessDeniedException("You can only modify your own reservations.");
         }
+    }
 
-        if (!reservation.getEmployee().getId().equals(currentUser.getEmployee().getId())) {
-            throw new BadRequestException("You can only modify your own reservations.");
+    private Employee getLinkedEmployee(AppUser user) {
+        if (user.getEmployee() == null) {
+            throw new AccessDeniedException("Your account is not linked to an employee.");
         }
+        return user.getEmployee();
     }
 }

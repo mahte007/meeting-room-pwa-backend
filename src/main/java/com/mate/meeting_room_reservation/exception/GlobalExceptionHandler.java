@@ -1,6 +1,10 @@
 package com.mate.meeting_room_reservation.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,6 +25,30 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, Object> handleBadRequest(BadRequestException ex) {
         return buildErrorResponse("BAD_REQUEST", ex.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, Object> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        return buildErrorResponse("BAD_REQUEST", "Malformed request body.");
+    }
+
+    @ExceptionHandler(DisabledException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Map<String, Object> handleDisabled(DisabledException ex) {
+        return buildErrorResponse("UNAUTHORIZED", "Account is disabled.");
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Map<String, Object> handleAuthentication(AuthenticationException ex) {
+        return buildErrorResponse("UNAUTHORIZED", "Invalid username or password.");
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, Object> handleAccessDenied(AccessDeniedException ex) {
+        return buildErrorResponse("FORBIDDEN", ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -24,6 +24,38 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        seedDemoData();
+        // Runs separately so databases created before user accounts existed still get logins
+        seedUsers();
+    }
+
+    private void seedUsers() {
+        if (appUserRepository.count() > 0) {
+            return;
+        }
+
+        appUserRepository.save(AppUser.builder()
+                .username("admin")
+                .password(passwordEncoder.encode("admin123"))
+                .role(UserRole.ADMIN)
+                .employee(null)
+                .build());
+
+        seedEmployeeUser("mate", "mate123", "mate@example.com");
+        seedEmployeeUser("anna", "anna123", "anna@example.com");
+    }
+
+    private void seedEmployeeUser(String username, String password, String employeeEmail) {
+        employeeRepository.findByEmail(employeeEmail).ifPresent(employee ->
+                appUserRepository.save(AppUser.builder()
+                        .username(username)
+                        .password(passwordEncoder.encode(password))
+                        .role(UserRole.EMPLOYEE)
+                        .employee(employee)
+                        .build()));
+    }
+
+    private void seedDemoData() {
         if (employeeRepository.count() > 0 || roomRepository.count() > 0 || reservationRepository.count() > 0) {
             return;
         }
@@ -51,29 +83,6 @@ public class DataSeeder implements CommandLineRunner {
                 .role("Sales Specialist")
                 .active(true)
                 .build());
-
-        if (appUserRepository.count() == 0) {
-            appUserRepository.save(AppUser.builder()
-                    .username("admin")
-                    .password(passwordEncoder.encode("admin123"))
-                    .role(UserRole.ADMIN)
-                    .employee(null)
-                    .build());
-
-            appUserRepository.save(AppUser.builder()
-                    .username("mate")
-                    .password(passwordEncoder.encode("mate123"))
-                    .role(UserRole.EMPLOYEE)
-                    .employee(mate)
-                    .build());
-
-            appUserRepository.save(AppUser.builder()
-                    .username("anna")
-                    .password(passwordEncoder.encode("anna123"))
-                    .role(UserRole.EMPLOYEE)
-                    .employee(anna)
-                    .build());
-        }
 
         Room roomA = roomRepository.save(Room.builder()
                 .name("Room A")
