@@ -3,13 +3,11 @@ package com.mate.meeting_room_reservation.service.impl;
 import com.mate.meeting_room_reservation.dto.reservation.ReservationDTO;
 import com.mate.meeting_room_reservation.dto.reservation.SaveReservationDTO;
 import com.mate.meeting_room_reservation.dto.reservation.UpdateReservationStatusDTO;
-import com.mate.meeting_room_reservation.entity.Employee;
-import com.mate.meeting_room_reservation.entity.Reservation;
-import com.mate.meeting_room_reservation.entity.ReservationStatus;
-import com.mate.meeting_room_reservation.entity.Room;
+import com.mate.meeting_room_reservation.entity.*;
 import com.mate.meeting_room_reservation.exception.BadRequestException;
 import com.mate.meeting_room_reservation.exception.ResourceNotFoundException;
 import com.mate.meeting_room_reservation.mapper.ReservationMapper;
+import com.mate.meeting_room_reservation.repository.AppUserRepository;
 import com.mate.meeting_room_reservation.repository.EmployeeRepository;
 import com.mate.meeting_room_reservation.repository.ReservationRepository;
 import com.mate.meeting_room_reservation.repository.RoomRepository;
@@ -27,6 +25,7 @@ public class ReservationServiceImpl implements ReservationService {
     private final EmployeeRepository employeeRepository;
     private final RoomRepository roomRepository;
     private final ReservationMapper reservationMapper;
+    private final AppUserRepository appUserRepository;
 
     @Override
     public List<ReservationDTO> listAllReservations() {
@@ -78,7 +77,7 @@ public class ReservationServiceImpl implements ReservationService {
                 .startTime(dto.startTime())
                 .endTime(dto.endTime())
                 .attendeeCount(dto.attendeeCount())
-                .status(ReservationStatus.PENDING)
+                .status(ReservationStatus.PLANNED)
                 .archived(false)
                 .employee(employee)
                 .room(room)
@@ -92,6 +91,8 @@ public class ReservationServiceImpl implements ReservationService {
     public ReservationDTO updateReservation(Long id, SaveReservationDTO dto) {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found."));
+
+        validateReservationOwnershipForEmployee(reservation);
 
         if (Boolean.TRUE.equals(reservation.getArchived())) {
             throw new BadRequestException("Archived reservation cannot be modified.");
@@ -154,6 +155,8 @@ public class ReservationServiceImpl implements ReservationService {
     public void deleteReservation(Long id) {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found."));
+
+        validateReservationOwnershipForEmployee(reservation);
 
         reservation.setArchived(true);
         reservationRepository.save(reservation);
@@ -223,6 +226,28 @@ public class ReservationServiceImpl implements ReservationService {
 
         if (hasOverlap) {
             throw new BadRequestException("Room is already reserved in this time range.");
+        }
+    }
+
+    private void validateReservationOwnershipForEmployee(Reservation reservation) {
+        String username = org.springframework.security.core.context.SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        AppUser currentUser = appUserRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found."));
+
+        if (currentUser.getRole() == UserRole.ADMIN) {
+            return;
+        }
+
+        if (currentUser.getEmployee() == null) {
+            throw new BadRequestException("Authenticated user is not linked to an employee.");
+        }
+
+        if (!reservation.getEmployee().getId().equals(currentUser.getEmployee().getId())) {
+            throw new BadRequestException("You can only modify your own reservations.");
         }
     }
 }
